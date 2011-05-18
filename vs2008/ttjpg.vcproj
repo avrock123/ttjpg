@@ -333,35 +333,35 @@
 				Name="unitpp"
 				>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\main.cc"
+					RelativePath="..\test\unitpp\main.cc"
 					>
 				</File>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\main.h"
+					RelativePath="..\test\unitpp\main.h"
 					>
 				</File>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\optmap.cc"
+					RelativePath="..\test\unitpp\optmap.cc"
 					>
 				</File>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\optmap.h"
+					RelativePath="..\test\unitpp\optmap.h"
 					>
 				</File>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\tester.cc"
+					RelativePath="..\test\unitpp\tester.cc"
 					>
 				</File>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\tester.h"
+					RelativePath="..\test\unitpp\tester.h"
 					>
 				</File>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\unit++.cc"
+					RelativePath="..\test\unitpp\unit++.cc"
 					>
 				</File>
 				<File
-					RelativePath="..\..\HexWorld\src\tests\unitpp\unit++.h"
+					RelativePath="..\test\unitpp\unit++.h"
 					>
 				</File>
 			</Filter>
