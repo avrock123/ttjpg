@@ -163,6 +163,7 @@ namespace ttjpg {
       int nNewNodes = 0;
       
       if(nNumFreeNodes > 0) {
+        /* Every new splitter will have 2 children... */
         nNewNodes = nNumFreeNodes * 2;
         Tree.grow(nNewNodes);
       }
@@ -411,6 +412,7 @@ namespace ttjpg {
     int nMCUsLeft = pi->nRestartInterval;
     
     while(nMCUsLeft > 0) {
+      /* For each data unit in the MCU... */
       for(int i=0;i<g_MCULayouts[pi->nMCULayout].nDataUnitsPerMCU;i++) {
         /* Decode a 8x8 DCT block */
         memset(nBlock,0,sizeof(nBlock));
@@ -443,7 +445,7 @@ namespace ttjpg {
             j += nLeadingZeros;
             
             /* AC coefficients are stored in diagonal zig-zag order, starting at top left */
-            nBlock[m_nZZOrder[j]] = n;
+            nBlock[m_nZZOrder[j]] = n;            
           }
         }
         
@@ -466,7 +468,7 @@ namespace ttjpg {
           for(int j=0;j<64;j++)
             nBlock[j] *= pQ->nTable[j];
         #endif
-
+        
         /* Perform IDCT on block */
         _InverseDCT(nBlock);        
         
