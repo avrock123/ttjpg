@@ -47,6 +47,8 @@ Usage
      object. If you're going to decode multiple JPEGs it's useful to use the 
      same decoding object, since it does some initialization and 
      precalculations.
+     
+     Note that the entire library resides in the ttjpg namespace.
   
   2) You need to tell ttjpg where it's supposed to read the binary JPEG data.
      This is done by implementing the ttjpg::InputStream class. You'll need to
@@ -71,14 +73,14 @@ Usage
      up and running, it's just a matter of passing the stream to the 
      JPEG decoder object. The decoder object has two methods:
      
-       bool readImage(InputStream *pIn,RGBImage *pRGB);    		
+       void readImage(InputStream *pIn,RGBImage *pRGB);    		
        
          This method read a JPEG image from the given stream and stores it in
          the supplied ttjpg::RGBImage struct. If a previous RGB image is still
          stored in it, it will be released first.
          
-         If the method is succesful it returns true and you'll find the 
-         following in the ttjpg::RGBImage struct:
+         If the method is succesful it returns and you'll find the following in
+         the RGBImage struct:
          
            nWidth      The width of the image in pixels.
            nHeight     The height of the image in pixels.
@@ -86,6 +88,8 @@ Usage
                        format, 8 bits per component). Note that this will be 
                        released automatically when the ttjpg::RGBImage runs out
                        of scope.
+         
+         If the decoding fails a DecodeError exception is thrown.
        
        bool readImageInfo(InputStream *pIn,RGBImage *pRGB);
 		 
