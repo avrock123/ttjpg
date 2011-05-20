@@ -41,7 +41,8 @@ namespace ttjpg {
   
   /* Function for looking up MCU layouts in the above table */        
   int _LookupMCULayout(ComponentInfo *p,int nNumComponents) {
-    if(nNumComponents != 3) return -1; /* Must be 3-component */
+    if(nNumComponents != 3) 
+      throw DecodeError(ERR_UNSUPPORTED_MCU_LAYOUT); /* Must be 3-component */
     
     for(int i=0;i<JPG_NUM_MCU_LAYOUTS;i++) {
       bool bMatch = true;
