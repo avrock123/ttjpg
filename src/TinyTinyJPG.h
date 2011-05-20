@@ -52,7 +52,8 @@ namespace ttjpg {
     ERR_NONE,ERR_UNSUPPORTED_MCU_LAYOUT,ERR_INVALID_HUFFMAN_TREE,
     ERR_INVALID_HUFFMAN_CODE,ERR_NOT_JPEG,ERR_NO_FRAME,ERR_UNEXPECTED_MARKER,
     ERR_MUST_BE_8BIT,ERR_INVALID_FRAME,ERR_INVALID_HUFFMAN_TABLE_ID,
-    ERR_INVALID_QUANTIZATION_TABLE,ERR_INVALID_SCAN
+    ERR_INVALID_QUANTIZATION_TABLE,ERR_INVALID_SCAN,
+    ERR_DYNAMIC_ARRAY_TOO_LARGE,ERR_STREAM_FAILURE
   };
 
   /* Simple 24-bit RGB (8 bits per component) images. Note that the pixel data
@@ -144,13 +145,16 @@ namespace ttjpg {
       if(nNewSize > (nAllocs + 1) * _AllocSize) {
         int nNeeded = (nNewSize / _AllocSize) - 1;
         if(nNewSize % _AllocSize) nNeeded++;
+      
+        if(nAllocs >= _MaxAllocs)
+          throw DecodeError(ERR_DYNAMIC_ARRAY_TOO_LARGE);
         
         for(int i=nAllocs;i<nNeeded;i++)
           p[i] = new _T[_AllocSize];
         
         nAllocs = nNeeded;
       }
-      
+            
       nSize = nNewSize;
     }
     
@@ -307,6 +311,144 @@ namespace ttjpg {
       int m_nBits;      
       int m_nEmbeddedMarker;
   };  
+  
+  /*===========================================================================
+  StdioInputStream class
+  
+    stdio (fopen(), etc) implementation of the InputStream interface
+  ===========================================================================*/
+  class StdioInputStream : public InputStream {
+    public:
+      StdioInputStream(FILE *fp,bool bCloseFile = false) 
+        : m_fp(fp),
+          m_bCloseFile(bCloseFile),
+          m_nBufferedBytes(0),
+          m_nNextByte(0),
+          m_bEOS(false) {
+        /* Use supplied stdio stream */
+      }
+      StdioInputStream(const char *pcFileName)
+        : m_bCloseFile(true),
+          m_nBufferedBytes(0),
+          m_nNextByte(0),
+          m_bEOS(false) {
+        /* Open file */
+        m_fp = fopen(pcFileName,"rb");
+      }      
+      virtual ~StdioInputStream() {
+        /* Close handle? */
+        if(m_bCloseFile && m_fp != NULL)
+          fclose(m_fp);
+      }
+      
+      /* InputStream implementation */
+      virtual bool isEndOfStream(void) {
+        return m_bEOS;
+      }
+      
+      virtual int readByte(void) {
+        if(m_nBufferedBytes == 0) {        
+          /* Need to fill the buffer */
+          if(m_fp == NULL) throw DecodeError(ERR_STREAM_FAILURE);
+          
+          m_nBufferedBytes = (int)fread(m_cBuffer,1,sizeof(m_cBuffer),m_fp);
+          
+          if(ferror(m_fp) != 0) throw DecodeError(ERR_STREAM_FAILURE);
+          
+          if(m_nBufferedBytes == 0) {
+            m_bEOS = true;
+            return 0;
+          }
+          
+          m_nNextByte = 0;
+        }
+        
+        /* Grab next byte and return it */
+        int n = m_cBuffer[m_nNextByte];
+        m_nNextByte++;
+        m_nBufferedBytes--;
+        return n;
+      }
+      
+      virtual void skip(int nBytes) {
+        /* Skip next bytes */
+        if(m_nBufferedBytes >= nBytes) {
+          m_nBufferedBytes -= nBytes;
+          m_nNextByte += nBytes;
+        }
+        else {
+          int nRemaining = nBytes - m_nBufferedBytes;
+        
+          m_nBufferedBytes = 0;
+          m_nNextByte = 0;
+          
+          fseek(m_fp,nRemaining,SEEK_CUR);
+
+          if(ferror(m_fp) != 0) throw DecodeError(ERR_STREAM_FAILURE);
+        }
+      }      
+      
+    private:
+      /* Data */
+      FILE *m_fp;
+      bool m_bCloseFile;
+      bool m_bEOS;
+      
+      /* Buffer */
+      int m_nBufferedBytes;
+      int m_nNextByte;
+      uint8 m_cBuffer[16384];
+  };
+  
+  /*===========================================================================
+  MemoryInputStream class
+  
+    Implementation of the InputStream interface for reading JPEG files directly
+    from a memory buffer.
+  ===========================================================================*/
+  class MemoryInputStream : public InputStream {
+    public:
+      MemoryInputStream(const uint8 *pc,int nTotalBytes) 
+        : m_pc(pc),
+          m_nTotalBytes(nTotalBytes),
+          m_nNextByte(0),
+          m_bEOS(false) {
+      }
+      virtual ~MemoryInputStream() {
+      }
+      
+      /* InputStream implementation */
+      virtual bool isEndOfStream(void) {
+        return m_bEOS;
+      }
+      
+      virtual int readByte(void) {
+        if(m_nNextByte == m_nTotalBytes) {        
+          m_bEOS = true;
+          return 0;
+        }
+        
+        /* Grab next byte and return it */
+        return m_pc[m_nNextByte++];
+      }
+      
+      virtual void skip(int nBytes) {
+        /* Skip next bytes */
+        m_nNextByte += nBytes;
+        
+        if(m_nNextByte > m_nTotalBytes) {
+          m_bEOS = true;
+          m_nNextByte = m_nTotalBytes;
+        }
+      }      
+      
+    private:
+      /* Data */
+      bool m_bEOS;
+      int m_nTotalBytes;
+      int m_nNextByte;
+      const uint8 *m_pc;
+  };
   
   /*===========================================================================
   Decoder class

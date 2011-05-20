@@ -25,7 +25,7 @@ Limitations
 		2) YCbCr 2x1 1x1 1x1
 		3) YCbCr 2x2 1x1 1x1
 		
-  * Huffman encoding only.
+  * Huffman-compressed JPEG files only.
   
   * No saving/encoding supported, this library is for loading/decoding only.
     
@@ -51,23 +51,17 @@ Usage
      Note that the entire library resides in the ttjpg namespace.
   
   2) You need to tell ttjpg where it's supposed to read the binary JPEG data.
-     This is done by implementing the ttjpg::InputStream class. You'll need to
-     implement the following virtual methods:
+     This is done by implementing the ttjpg::InputStream class. Two standard
+     implementations are defined in TineTinyJPG.h:
      
-       virtual int readByte(void);       
-       virtual bool isEndOfStream(void);
-       virtual void skip(int nBytes);
-
-     readByte() should read a single byte and return the value.       
-     isEndStream() should return true if a previous call to readByte() 
-     attempted to read past the end of the stream (file), false otherwise.
-     skip() should skip the next nBytes bytes of the stream.
+       StdioInputStream       For decoding an stdio stream (opened with 
+                              fopen(), etc).
+       MemoryInputStream      For decoding directly from a memory buffer (i.e.
+                              you've loaded the entire JPEG file into memory
+                              beforehand).
      
-     See the StdioInput class defined in test/Test.cpp for an example.
-     
-     Note that you should probably do some memory buffering, mapping readByte()
-     directly to, for example, fgetc() can be very slow due to multithreading
-     locks.
+     If neither of the above stream types does the job for you, you'll have to
+     implement your own InputStream.
   
   3) When you got your very own ttjpg::InputStream-implementing stream
      up and running, it's just a matter of passing the stream to the 

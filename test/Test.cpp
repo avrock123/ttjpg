@@ -87,70 +87,6 @@ namespace tests {
   };
   #endif
 
-  class StdioInput : public ttjpg::InputStream {
-    public:
-      StdioInput(FILE *fp) : m_fp(fp) {}
-      virtual ~StdioInput() {}
-      
-      virtual bool isEndOfStream(void) {
-        return feof(m_fp) != 0;
-      }
-      
-      virtual int readByte(void) {
-        return fgetc(m_fp);
-      }
-      
-      virtual void skip(int nBytes) {
-        fseek(m_fp,nBytes,SEEK_CUR);
-      }
-        
-    private:
-      FILE *m_fp;
-  };
-  
-  class BufferedStdioInput : public ttjpg::InputStream {
-    public:
-      BufferedStdioInput(FILE *fp) {
-        fseek(fp,0,SEEK_END);
-        m_nSize = ftell(fp);
-        fseek(fp,0,SEEK_SET);
-        m_nPos = 0;
-        m_bEOS = false;
-        
-        m_pc = new unsigned char[m_nSize];
-        
-        fread(m_pc,m_nSize,1,fp);
-      }
-      virtual ~BufferedStdioInput() {
-        delete [] m_pc;
-      }
-      
-      virtual bool isEndOfStream(void) {
-        return m_bEOS;
-      }
-      
-      virtual int readByte(void) {
-        if(m_nPos >= m_nSize) {
-          m_bEOS = true;
-          return 0;
-        }
-        
-        return m_pc[m_nPos++];
-      }
-      
-      virtual void skip(int nBytes) {
-        m_nPos += nBytes;
-        
-        if(m_nPos > m_nSize) m_bEOS = true;
-      }    
-      
-    private:
-      unsigned char *m_pc;
-      int m_nPos;
-      int m_nSize;
-      bool m_bEOS;
-  };
-
   class ttjpgTest : public suite {
     public:
       ttjpgTest() : suite("ttjpgTest") {        
@@ -253,7 +189,7 @@ namespace tests {
         assert_true("fopen(): " + Name,fp != NULL);
         
         /* Setup stream */
-        BufferedStdioInput In(fp);
+        ttjpg::StdioInputStream In(fp);
         
         /* Decode JPG */        
         #if defined(TTJPG_BENCHMARK)        
@@ -278,7 +214,7 @@ namespace tests {
         assert_true("fopen(): " + Name,fp != NULL);
         
         /* Setup stream */
-        StdioInput In(fp);
+        ttjpg::StdioInputStream In(fp);
         
         /* Decode JPG */
         pDecoder->readImageInfo(&In,pImage);
