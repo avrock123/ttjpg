@@ -46,6 +46,14 @@ namespace ttjpg {
   typedef unsigned char uint8;
   typedef unsigned short uint16;
   typedef unsigned long uint32;
+  
+  /* Error codes */
+  enum ErrorCode {
+    ERR_NONE,ERR_UNSUPPORTED_MCU_LAYOUT,ERR_INVALID_HUFFMAN_TREE,
+    ERR_INVALID_HUFFMAN_CODE,ERR_NOT_JPEG,ERR_NO_FRAME,ERR_UNEXPECTED_MARKER,
+    ERR_MUST_BE_8BIT,ERR_INVALID_FRAME,ERR_INVALID_HUFFMAN_TABLE_ID,
+    ERR_INVALID_QUANTIZATION_TABLE,ERR_INVALID_SCAN
+  };
 
   /* Simple 24-bit RGB (8 bits per component) images. Note that the pixel data
      memory is released when the object runs out of scope */
@@ -189,7 +197,7 @@ namespace ttjpg {
     DynamicArray<HuffmanNode,1024,1024> Tree;
     
     /* Methods */
-    bool buildTree(void);
+    void buildTree(void);
     void buildLookupTables(HuffmanNode *p,int nBits,uint32 nCode);
     int decode(InputStream *pIn,int *pnLeadingZeros);    
   };
@@ -236,6 +244,22 @@ namespace ttjpg {
     
     int nDCTStart,nDCTEnd,nAL,nAH;        
   };    
+
+  /*===========================================================================
+  Exception class
+  ===========================================================================*/
+  class DecodeError {
+    public:
+      DecodeError(ErrorCode _ErrorCode) : m_ErrorCode(_ErrorCode) {}
+      ~DecodeError() {}
+      
+      /* Methods */
+      ErrorCode getError(void) {return m_ErrorCode;}
+    
+    private:
+      /* Data */
+      ErrorCode m_ErrorCode;
+  };
 
   /*===========================================================================
   InputStream abstract class interface
@@ -297,8 +321,8 @@ namespace ttjpg {
       /*-----------------------------------------------------------------------
       Methods
       -----------------------------------------------------------------------*/     
-      bool readImageInfo(InputStream *pIn,RGBImage *pRGB);
-      bool readImage(InputStream *pIn,RGBImage *pRGB);    
+      void readImageInfo(InputStream *pIn,RGBImage *pRGB);
+      void readImage(InputStream *pIn,RGBImage *pRGB);    
       
     private:
       /*-----------------------------------------------------------------------
@@ -308,22 +332,22 @@ namespace ttjpg {
       
       short m_nRTable[256];
       short m_nGTable[65536];
-      short m_nBTable[256];
+      short m_nBTable[256];      
     
       /*-----------------------------------------------------------------------
       Local functions
       -----------------------------------------------------------------------*/     
-      bool _InterpretMarker(InputStream *pIn,RGBImage *pRGB,Info *pi,int nMarker);
-      bool _DecodeFrame(InputStream *pIn,RGBImage *pRGB,Info *pi);
-      bool _DecodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
+      void _InterpretMarker(InputStream *pIn,RGBImage *pRGB,Info *pi,int nMarker);
+      void _DecodeFrame(InputStream *pIn,RGBImage *pRGB,Info *pi);
+      void _DecodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
       int _DecodeRestartInterval(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
       
-      bool _Parse(InputStream *pIn,RGBImage *pRGB,Info *pi,bool bGetInfoOnly);
-      bool _ParseSOF(InputStream *pIn,RGBImage *pRGB,Info *pi);
-      bool _ParseDHT(InputStream *pIn,RGBImage *pRGB,Info *pi);
-      bool _ParseDQT(InputStream *pIn,RGBImage *pRGB,Info *pi);
-      bool _ParseSOS(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
-      bool _ParseDRI(InputStream *pIn,RGBImage *pRGB,Info *pi);
+      void _Parse(InputStream *pIn,RGBImage *pRGB,Info *pi,bool bGetInfoOnly);
+      void _ParseSOF(InputStream *pIn,RGBImage *pRGB,Info *pi);
+      void _ParseDHT(InputStream *pIn,RGBImage *pRGB,Info *pi);
+      void _ParseDQT(InputStream *pIn,RGBImage *pRGB,Info *pi);
+      void _ParseSOS(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
+      void _ParseDRI(InputStream *pIn,RGBImage *pRGB,Info *pi);
       
       void _InverseDCT(short *pnBlock);
       

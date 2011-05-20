@@ -29,6 +29,15 @@ Limitations
   
   * No saving/encoding supported, this library is for loading/decoding only.
     
+Error handling
+--------------
+  C++ exceptions are used to indicate decoding failures. Only a single 
+  exception class can be thrown: ttjpg::DecodeError. 
+  
+  To gain more information about the failure use the getError() method.
+  
+  For a list of possible error codes consult TinyTinyJPG.h.
+  
 Usage
 -----
   This library is very easy to integrate in any C++ application. The task
@@ -93,10 +102,6 @@ Build options and dependencies
   
   Visual Studio 2008 solution is supplied in the vs2008 directory which will
   build the unit++ based test suite.
-
-Example
--------
-  See the test cases in test/Test.cpp.
   
 License
 -------

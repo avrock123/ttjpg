@@ -261,7 +261,7 @@ namespace tests {
           Stopwatch.start();
         #endif
         
-        assert_true("readImage(): " + Name,pDecoder->readImage(&In,pImage));
+        pDecoder->readImage(&In,pImage);
 
         #if defined(TTJPG_BENCHMARK)        
           int nTime = Stopwatch.stop();
@@ -281,7 +281,7 @@ namespace tests {
         StdioInput In(fp);
         
         /* Decode JPG */
-        assert_true("readImageInfo(): " + Name,pDecoder->readImageInfo(&In,pImage));
+        pDecoder->readImageInfo(&In,pImage);
         
         /* Clean up */
         fclose(fp);

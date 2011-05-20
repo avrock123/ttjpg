@@ -58,8 +58,7 @@ namespace ttjpg {
         return i;
     }
     
-    /* Not found */
-    return -1;
+    throw DecodeError(ERR_UNSUPPORTED_MCU_LAYOUT);
   }
 
   /*===========================================================================
@@ -130,7 +129,7 @@ namespace ttjpg {
   /*===========================================================================
   Huffman decoding tree implementation
   ===========================================================================*/  
-  bool HuffmanTable::buildTree(void) {
+  void HuffmanTable::buildTree(void) {
     /* Build huffman decoding tree -- create initial tree */
     Tree.grow(3);
     Tree[0].pChildren[0] = &Tree[1];
@@ -154,7 +153,7 @@ namespace ttjpg {
         else {
           /* Invalid tree... can't possible build it like this */
           bDefined = false;
-          return false;
+          throw DecodeError(ERR_INVALID_HUFFMAN_TREE);
         }        
       }
       
@@ -179,8 +178,6 @@ namespace ttjpg {
       nNextFreeNode = Tree.size() - nNewNodes;
       nNumFreeNodes = nNewNodes;
     }        
-    
-    return true;
   }
   
   int HuffmanTable::decode(InputStream *pIn,int *pnLeadingZeros) {
@@ -218,7 +215,7 @@ namespace ttjpg {
       }
     }
     
-    return 0;
+    throw DecodeError(ERR_INVALID_HUFFMAN_CODE);
   }
 
   /*===========================================================================
@@ -235,27 +232,24 @@ namespace ttjpg {
   Decoder::~Decoder() {
   }
       
-  bool Decoder::readImageInfo(InputStream *pIn,RGBImage *pRGB) {
+  void Decoder::readImageInfo(InputStream *pIn,RGBImage *pRGB) {
     Info Info;
   
     /* Parse stream just for image info */
-    return _Parse(pIn,pRGB,&Info,true);
+    _Parse(pIn,pRGB,&Info,true);
   }
   
-  bool Decoder::readImage(InputStream *pIn,RGBImage *pRGB) {
-    /* Parse JPG file */
+  void Decoder::readImage(InputStream *pIn,RGBImage *pRGB) {
     Info Info;
-    if(!_Parse(pIn,pRGB,&Info,false))
-      return false; /* Something went wrong */
-  
-    /* Everything went ok */
-    return true;
+
+    /* Parse JPG file incl. full image */
+    _Parse(pIn,pRGB,&Info,false);
   }
   
-  bool Decoder::_Parse(InputStream *pIn,RGBImage *pRGB,Info *pi,bool bGetInfoOnly) {
+  void Decoder::_Parse(InputStream *pIn,RGBImage *pRGB,Info *pi,bool bGetInfoOnly) {
     /* SOI marker must be first */
     if(pIn->readMarker() != 0xD8)
-      return false;
+      throw DecodeError(ERR_NOT_JPEG);
       
     /* Read markers until start of frame */
     bool bSOF = false;
@@ -265,60 +259,47 @@ namespace ttjpg {
       
       if(nMarker == 0xC0) {
         /* Start Of Frame */
-        if(!_ParseSOF(pIn,pRGB,pi))
-          return false;
+        _ParseSOF(pIn,pRGB,pi);
         
         pi->nMCUIndex = 0;
         bSOF = true;
         break;
       }
       else if(!bGetInfoOnly) {
-        if(!_InterpretMarker(pIn,pRGB,pi,nMarker))
-          return false;
+        _InterpretMarker(pIn,pRGB,pi,nMarker);
       }
     }
     
     if(!bSOF)
-      return false; /* No SOF */
+      throw DecodeError(ERR_NO_FRAME);
     
     /* If we're only getting image info stop here */
-    if(bGetInfoOnly)
-      return true;
-      
-    /* Allocate room for image */
-    pRGB->release();
-    pRGB->pc = new uint8[pRGB->nWidth * pRGB->nHeight * 3];
-    memset(pRGB->pc,0,pRGB->nWidth * pRGB->nHeight * 3);
-      
-    /* Decode frame */
-    if(!_DecodeFrame(pIn,pRGB,pi))
-      return false;
-  
-    /* OK */
-    return true;
+    if(!bGetInfoOnly) {
+      /* Allocate room for image */
+      pRGB->release();
+      pRGB->pc = new uint8[pRGB->nWidth * pRGB->nHeight * 3];
+      memset(pRGB->pc,0,pRGB->nWidth * pRGB->nHeight * 3);
+        
+      /* Decode frame */
+      _DecodeFrame(pIn,pRGB,pi);
+    }
   }
   
-  bool Decoder::_InterpretMarker(InputStream *pIn,RGBImage *pRGB,Info *pi,int nMarker) {
+  void Decoder::_InterpretMarker(InputStream *pIn,RGBImage *pRGB,Info *pi,int nMarker) {
     switch(nMarker) {
       case 0xC4: /* Define Huffman Tables */
-        if(!_ParseDHT(pIn,pRGB,pi))
-          return false;
+        _ParseDHT(pIn,pRGB,pi);
         break;
       case 0xDB: /* Define Quantization Tables */
-        if(!_ParseDQT(pIn,pRGB,pi))
-          return false;
+        _ParseDQT(pIn,pRGB,pi);
         break;
       case 0xDD: /* Define Restart Interval */
-        if(!_ParseDRI(pIn,pRGB,pi))
-          return false;
+        _ParseDRI(pIn,pRGB,pi);
         break;
     }
-            
-    /* OK */
-    return true;
   }
   
-  bool Decoder::_DecodeFrame(InputStream *pIn,RGBImage *pRGB,Info *pi) {
+  void Decoder::_DecodeFrame(InputStream *pIn,RGBImage *pRGB,Info *pi) {
     bool bEOI = false;
     
     while(!pIn->isEndOfStream()) {
@@ -329,11 +310,10 @@ namespace ttjpg {
         case 0xDA: /* Start Of Scan */
         {
           Scan Scan;
-          if(!_ParseSOS(pIn,pRGB,pi,&Scan))
-            return false;
+
+          _ParseSOS(pIn,pRGB,pi,&Scan);
           
-          if(!_DecodeScan(pIn,pRGB,pi,&Scan))
-            return false;               
+          _DecodeScan(pIn,pRGB,pi,&Scan);
           break;
         }
         case 0xD9: /* End Of Image */
@@ -346,8 +326,7 @@ namespace ttjpg {
         }
         default:
         {
-          if(!_InterpretMarker(pIn,pRGB,pi,nMarker))
-            return false;
+          _InterpretMarker(pIn,pRGB,pi,nMarker);
           break;
         }
       }
@@ -355,12 +334,9 @@ namespace ttjpg {
       /* Reached end of image? */
       if(bEOI) break;
     }
-
-    /* OK */
-    return true;
   }
   
-  bool Decoder::_DecodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
+  void Decoder::_DecodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
     /* Calculate number of restart intervals */
     int nRestartIntervalsLeft = pi->nTotalMCUs / pi->nRestartInterval;
     if(pi->nTotalMCUs % pi->nRestartInterval) nRestartIntervalsLeft++;
@@ -390,12 +366,9 @@ namespace ttjpg {
       }
       else {
         /* Unexpected marker */
-        return false;
+        throw DecodeError(ERR_UNEXPECTED_MARKER);
       }
     }    
-  
-    /* OK */
-    return true;
   }
   
   int Decoder::_DecodeRestartInterval(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
@@ -489,27 +462,26 @@ namespace ttjpg {
     return pIn->readMarker();    
   }
   
-  bool Decoder::_ParseDRI(InputStream *pIn,RGBImage *pRGB,Info *pi) {
+  void Decoder::_ParseDRI(InputStream *pIn,RGBImage *pRGB,Info *pi) {
     /* The DRI marker defines how many MCUs should be decoded at a 
        time in a single run (the restart interval). This marker is 
        optional, if it's not present we'll just do all MCUs in one run */       
     int nLen = pIn->readWord();     
     pi->nRestartInterval = pIn->readWord();
-    
-    /* OK */
-    return true;
   }
   
-  bool Decoder::_ParseSOF(InputStream *pIn,RGBImage *pRGB,Info *pi) {
+  void Decoder::_ParseSOF(InputStream *pIn,RGBImage *pRGB,Info *pi) {
     int nLen = pIn->readWord(); 
     
     int nBitsPerComponent = pIn->readByte();    
     if(nBitsPerComponent != 8) 
-      return false; /* Must be 8-bit */
+      throw DecodeError(ERR_MUST_BE_8BIT);
       
     /* Get image dimensions */
     pRGB->nHeight = pIn->readWord();
-    pRGB->nWidth = pIn->readWord();
+    pRGB->nWidth = pIn->readWord();    
+    if(pRGB->nHeight == 0 || pRGB->nWidth == 0)
+      throw DecodeError(ERR_INVALID_FRAME);
     
     int nNumComponents = pIn->readByte();
     
@@ -518,7 +490,7 @@ namespace ttjpg {
       /* Get component index */
       int nId = pIn->readByte() - 1;
       if(nId < 0 || nId >= 3) 
-        return false;
+        throw DecodeError(ERR_INVALID_FRAME);
            
       /* Get component info */      
       int nSamplingFactors = pIn->readByte();
@@ -529,9 +501,7 @@ namespace ttjpg {
     
     /* Figure out the MCU layout... */
     pi->nMCULayout = _LookupMCULayout(pi->Components,nNumComponents);
-    if(pi->nMCULayout < 0)
-      return false; /* Unsupported layout */
-    
+
     /* Calculate total number of MCUs and default restart interval */
     pi->nHorizontalMCUs = pRGB->nWidth / g_MCULayouts[pi->nMCULayout].nMCUXSize;
     pi->nVerticalMCUs = pRGB->nHeight / g_MCULayouts[pi->nMCULayout].nMCUYSize;
@@ -541,12 +511,9 @@ namespace ttjpg {
     
     pi->nTotalMCUs = pi->nHorizontalMCUs * pi->nVerticalMCUs;
     pi->nRestartInterval = pi->nTotalMCUs;  
-    
-    /* OK */
-    return true;
   }
   
-  bool Decoder::_ParseDHT(InputStream *pIn,RGBImage *pRGB,Info *pi) {
+  void Decoder::_ParseDHT(InputStream *pIn,RGBImage *pRGB,Info *pi) {
     int nLen = pIn->readWord() - 2; 
 
     /* Read huffman tables */
@@ -556,7 +523,7 @@ namespace ttjpg {
 
       int nId = n & 0x0f;
       if(nId < 0 || nId >= 3)
-        return false;
+        throw DecodeError(ERR_INVALID_HUFFMAN_TABLE_ID);
             
       HuffmanTable *pTable;
             
@@ -579,17 +546,13 @@ namespace ttjpg {
       }
 
       /* Build tree */
-      if(!pTable->buildTree())
-        return false;
+      pTable->buildTree();
         
       pTable->bDefined = true;
     }
-    
-    /* OK */
-    return true;
   }
   
-  bool Decoder::_ParseDQT(InputStream *pIn,RGBImage *pRGB,Info *pi) {
+  void Decoder::_ParseDQT(InputStream *pIn,RGBImage *pRGB,Info *pi) {
     int nLen = pIn->readWord() - 2; 
     
     /* Read quantization table definitions */
@@ -599,11 +562,11 @@ namespace ttjpg {
       
       int nId = n & 0x0f;
       if(nId < 0 || nId >= 3)
-        return false;
+        throw DecodeError(ERR_INVALID_QUANTIZATION_TABLE);
       
       int nPrecission = (n & 0xf0) >> 4;      
       if(nPrecission != 0)
-        return false;
+        throw DecodeError(ERR_INVALID_QUANTIZATION_TABLE);
               
       pi->QuantizationTables[nId].bDefined = true;
       
@@ -614,12 +577,9 @@ namespace ttjpg {
       
       nLen -= 64;
     }
-
-    /* OK */
-    return true;
   }  
   
-  bool Decoder::_ParseSOS(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
+  void Decoder::_ParseSOS(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
     int nLen = pIn->readWord();
     
     ps->nNumComponents = pIn->readByte();
@@ -628,7 +588,7 @@ namespace ttjpg {
     for(int i=0;i<ps->nNumComponents;i++) {
       int nId = pIn->readByte() - 1;
       if(nId < 0 || nId >= 3)
-        return false;
+        throw DecodeError(ERR_INVALID_SCAN);
       
       ps->Components[i].nIndex = nId;
       
@@ -642,7 +602,8 @@ namespace ttjpg {
       ps->Components[i].pDCTable = &pi->DCHuffmanTables[ps->Components[i].nDCTable];
       
       if(!ps->Components[i].pACTable->bDefined ||
-         !ps->Components[i].pDCTable->bDefined) return false;
+         !ps->Components[i].pDCTable->bDefined)
+        throw DecodeError(ERR_INVALID_SCAN);         
     }        
     
     ps->nDCTStart = pIn->readByte();
@@ -652,9 +613,6 @@ namespace ttjpg {
     
     ps->nAH = n & 0x0f;
     ps->nAL = (n & 0xf0) >> 4;
-    
-    /* OK */
-    return true;    
   }
   
   void Decoder::_MergeMCU(RGBImage *pRGB,Info *pi) {
@@ -786,14 +744,14 @@ namespace ttjpg {
     }
   }
   
-  void Decoder::_InitRGBTables(void) {
+  void Decoder::_InitRGBTables(void) {            
     /* Init tables for fast YCBCR-to-RGB conversion */
     for(int i=0;i<256;i++) {
-      m_nRTable[i] = ((91881 * (i - 128)) >> 16);
-      m_nBTable[i] = ((116129 * (i - 128)) >> 16);
+      m_nRTable[i] = ((91881 * (i - 128)) >> 16);  /* Min=-180, Max=180 */
+      m_nBTable[i] = ((116129 * (i - 128)) >> 16); /* Min=-227, Max=227 */
       
       for(int j=0;j<256;j++)
-        m_nGTable[(i<<8) + j] = ((-22553 * (i - 128) - 46801 * (j - 128)) >> 16);
+        m_nGTable[(i<<8) + j] = ((-22553 * (i - 128) - 46801 * (j - 128)) >> 16); /* Min=-135, Max=135 */
     }
   }
   
