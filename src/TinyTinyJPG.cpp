@@ -40,10 +40,7 @@ namespace ttjpg {
   };
   
   /* Function for looking up MCU layouts in the above table */        
-  int _LookupMCULayout(ComponentInfo *p,int nNumComponents) {
-    if(nNumComponents != 3) 
-      throw DecodeError(ERR_UNSUPPORTED_MCU_LAYOUT); /* Must be 3-component */
-    
+  int _LookupMCULayout(ComponentInfo *p) {
     for(int i=0;i<JPG_NUM_MCU_LAYOUTS;i++) {
       bool bMatch = true;
       for(int j=0;j<3;j++) {
@@ -246,7 +243,42 @@ namespace ttjpg {
     /* Parse JPG file incl. full image */
     _Parse(pIn,pRGB,&Info,false);
   }
-  
+
+  void Decoder::decodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
+    /* Calculate number of restart intervals */
+    int nRestartIntervalsLeft = pi->nTotalMCUs / pi->nRestartInterval;
+    if(pi->nTotalMCUs % pi->nRestartInterval) nRestartIntervalsLeft++;
+    
+    /* Allocate memory for MCU buffer */
+    if(pi->pcMCUBuffer != NULL) delete [] pi->pcMCUBuffer;
+    pi->pcMCUBuffer = new uint8[g_MCULayouts[pi->nMCULayout].nMCUXSize * 
+                                g_MCULayouts[pi->nMCULayout].nMCUYSize * 3]; 
+    
+    /* Continue until out of restart intervals */
+    while(nRestartIntervalsLeft > 0) {
+      /* Decode restart interval */
+      int nMarker = _DecodeRestartInterval(pIn,pRGB,pi,ps);
+      
+      if(nMarker == 0xD9) {
+        /* End Of Image marker */
+        break; 
+      }
+      else if(nMarker >= 0xD0 && nMarker <= 0xD7) {
+        /* Restart marker. If we were pedantic we'd check that they come in 
+           the right order :P */
+        nRestartIntervalsLeft--; 
+      }
+      else if(nMarker == 0) {
+        /* End of stream */
+        break;
+      }
+      else {
+        /* Unexpected marker */
+        throw DecodeError(ERR_UNEXPECTED_MARKER);
+      }
+    }    
+  }
+    
   void Decoder::_Parse(InputStream *pIn,RGBImage *pRGB,Info *pi,bool bGetInfoOnly) {
     /* SOI marker must be first */
     if(pIn->readMarker() != 0xD8)
@@ -314,7 +346,7 @@ namespace ttjpg {
 
           _ParseSOS(pIn,pRGB,pi,&Scan);
           
-          _DecodeScan(pIn,pRGB,pi,&Scan);
+          decodeScan(pIn,pRGB,pi,&Scan);
           break;
         }
         case 0xD9: /* End Of Image */
@@ -337,44 +369,9 @@ namespace ttjpg {
     }
   }
   
-  void Decoder::_DecodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
-    /* Calculate number of restart intervals */
-    int nRestartIntervalsLeft = pi->nTotalMCUs / pi->nRestartInterval;
-    if(pi->nTotalMCUs % pi->nRestartInterval) nRestartIntervalsLeft++;
-    
-    /* Allocate memory for MCU buffer */
-    if(pi->pcMCUBuffer != NULL) delete [] pi->pcMCUBuffer;
-    pi->pcMCUBuffer = new uint8[g_MCULayouts[pi->nMCULayout].nMCUXSize * 
-                                g_MCULayouts[pi->nMCULayout].nMCUYSize * 3]; 
-    
-    /* Continue until out of restart intervals */
-    while(nRestartIntervalsLeft > 0) {
-      /* Decode restart interval */
-      int nMarker = _DecodeRestartInterval(pIn,pRGB,pi,ps);
-      
-      if(nMarker == 0xD9) {
-        /* End Of Image marker */
-        break; 
-      }
-      else if(nMarker >= 0xD0 && nMarker <= 0xD7) {
-        /* Restart marker. If we were pedantic we'd check that they come in 
-           the right order :P */
-        nRestartIntervalsLeft--; 
-      }
-      else if(nMarker == 0) {
-        /* End of stream */
-        break;
-      }
-      else {
-        /* Unexpected marker */
-        throw DecodeError(ERR_UNEXPECTED_MARKER);
-      }
-    }    
-  }
-  
   int Decoder::_DecodeRestartInterval(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
     /* Reset decoder */
-    for(int i=0;i<ps->nNumComponents;i++)
+    for(int i=0;i<3;i++)
       ps->Components[i].nDCPred = 0;     
 
     /* 8x8 block buffer */
@@ -397,7 +394,8 @@ namespace ttjpg {
         HuffmanTable *pDC = ps->Components[nComponent].pDCTable;
         HuffmanTable *pAC = ps->Components[nComponent].pACTable;
         
-        /* Decode DC value */
+        /* Decode DC value (within restart intervals, each DC value is coded as a 
+           delta from the previous one of the specific component) */
         nBlock[0] = ps->Components[nComponent].nDCPred + pDC->decode(pIn,NULL);
         ps->Components[nComponent].nDCPred = nBlock[0];
         
@@ -485,23 +483,30 @@ namespace ttjpg {
       throw DecodeError(ERR_INVALID_FRAME);
     
     int nNumComponents = pIn->readByte();
+    if(nNumComponents != 3)
+      throw DecodeError(ERR_UNSUPPORTED_MCU_LAYOUT); /* Must be 3-component */
     
     /* For each component... */
-    for(int i=0;i<nNumComponents;i++) {
+    for(int i=0;i<3;i++) {
       /* Get component index */
       int nId = pIn->readByte() - 1;
-      if(nId < 0 || nId >= 3) 
+      if(nId != i) 
         throw DecodeError(ERR_INVALID_FRAME);
            
       /* Get component info */      
       int nSamplingFactors = pIn->readByte();
-      pi->Components[nId].nXSampleFactor = (nSamplingFactors & 0xf0) >> 4;      
-      pi->Components[nId].nYSampleFactor = nSamplingFactors & 0x0f;
-      pi->Components[nId].nQuantizationTable = pIn->readByte();      
+      pi->Components[i].nXSampleFactor = (nSamplingFactors & 0xf0) >> 4;      
+      pi->Components[i].nYSampleFactor = nSamplingFactors & 0x0f;
+      pi->Components[i].nQuantizationTable = pIn->readByte();    
+      
+      /* Check if it's a valid quantization table index */
+      if(pi->Components[i].nQuantizationTable < 0 ||
+         pi->Components[i].nQuantizationTable > 3)
+        throw DecodeError(ERR_INVALID_FRAME);         
     }
     
     /* Figure out the MCU layout... */
-    pi->nMCULayout = _LookupMCULayout(pi->Components,nNumComponents);
+    pi->nMCULayout = _LookupMCULayout(pi->Components);
 
     /* Calculate total number of MCUs and default restart interval */
     pi->nHorizontalMCUs = pRGB->nWidth / g_MCULayouts[pi->nMCULayout].nMCUXSize;
@@ -533,10 +538,13 @@ namespace ttjpg {
       else
         pTable = &pi->DCHuffmanTables[nId];
       
+      /* A huffman table is stored like this: First there's 16 numbers, each 
+         specifying the number of codes of the given length */         
       for(int i=0;i<16;i++)
         pTable->nL[i] = pIn->readByte();
       nLen -= 16;
       
+      /* Second, all the codes are stored */
       for(int i=0;i<16;i++) {
         if(pTable->nL[i] > 0) pTable->nMaxBits = i + 1;
       
@@ -546,7 +554,7 @@ namespace ttjpg {
         nLen -= pTable->nL[i];
       }
 
-      /* Build tree */
+      /* Build tree from table */
       pTable->buildTree();
         
       pTable->bDefined = true;
@@ -583,37 +591,39 @@ namespace ttjpg {
   void Decoder::_ParseSOS(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps) {
     int nLen = pIn->readWord();
     
-    ps->nNumComponents = pIn->readByte();
+    int nNumComponents = pIn->readByte();
+    if(nNumComponents != 3)
+      throw DecodeError(ERR_INVALID_SCAN);
     
     /* For each component... */
-    for(int i=0;i<ps->nNumComponents;i++) {
+    for(int i=0;i<3;i++) {
       int nId = pIn->readByte() - 1;
-      if(nId < 0 || nId >= 3)
+      if(i != nId)
         throw DecodeError(ERR_INVALID_SCAN);
       
-      ps->Components[i].nIndex = nId;
-      
+      /* Get the indices of the huffman tables and check if they're valid */
       int nEncodingTables = pIn->readByte();
       
-      ps->Components[i].nACTable = nEncodingTables & 0x0f;
-      ps->Components[i].nDCTable = (nEncodingTables & 0xf0) >> 4;
+      int nACTable = nEncodingTables & 0x0f;
+      int nDCTable = (nEncodingTables & 0xf0) >> 4;
       
-      /* Resolve huffman tables */
-      ps->Components[i].pACTable = &pi->ACHuffmanTables[ps->Components[i].nACTable];
-      ps->Components[i].pDCTable = &pi->DCHuffmanTables[ps->Components[i].nDCTable];
+      if(nACTable < 0 || nACTable > 3 ||
+         nDCTable < 0 || nDCTable > 3)
+        throw DecodeError(ERR_INVALID_SCAN);
+      
+      /* Resolve huffman tables */            
+      ps->Components[i].pACTable = &pi->ACHuffmanTables[nACTable];
+      ps->Components[i].pDCTable = &pi->DCHuffmanTables[nDCTable];
       
       if(!ps->Components[i].pACTable->bDefined ||
          !ps->Components[i].pDCTable->bDefined)
         throw DecodeError(ERR_INVALID_SCAN);         
     }        
     
-    ps->nDCTStart = pIn->readByte();
-    ps->nDCTEnd = pIn->readByte();
-    
-    int n = pIn->readByte();
-    
-    ps->nAH = n & 0x0f;
-    ps->nAL = (n & 0xf0) >> 4;
+    /* DCT start/end and AH/AL follows, but we'll ignore those */    
+    int nDCTStart = pIn->readByte();
+    int nDCTEnd = pIn->readByte();    
+    int nA = pIn->readByte(); /* AH/AL */
   }
   
   void Decoder::_MergeMCU(RGBImage *pRGB,Info *pi) {

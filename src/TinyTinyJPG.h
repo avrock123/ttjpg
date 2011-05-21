@@ -6,8 +6,8 @@ All rights reserved.
 This source code is released under the terms of the BSD license; see the 
 file LICENSE.TXT for details.
 */
-#ifndef __TINYTINY_JPG_H__
-#define __TINYTINY_JPG_H__
+#ifndef __TINYTINYJPG_H__
+#define __TINYTINYJPG_H__
 
 #include <stdio.h>
 #include <string.h>
@@ -43,6 +43,7 @@ namespace ttjpg {
   /*===========================================================================
   Types
   ===========================================================================*/
+  /* Unsigned types */
   typedef unsigned char uint8;
   typedef unsigned short uint16;
   typedef unsigned long uint32;
@@ -233,20 +234,14 @@ namespace ttjpg {
   
   /* Component of a scan */
   struct ScanComponent {
-    int nIndex;
-    int nACTable,nDCTable;
-    
-    HuffmanTable *pACTable,*pDCTable;
-    
-    int nDCPred; /* DC predictor */
+    HuffmanTable *pACTable; /* Huffman decoding of AC values */
+    HuffmanTable *pDCTable; /* Huffman decoding of DC values */   
+    int nDCPred;            /* DC predictor */
   };  
   
   /* Internal per-decode scan context */
   struct Scan {        
-    int nNumComponents;
-    ScanComponent Components[3]; 
-    
-    int nDCTStart,nDCTEnd,nAL,nAH;        
+    ScanComponent Components[3];     
   };    
 
   /*===========================================================================
@@ -465,6 +460,7 @@ namespace ttjpg {
       -----------------------------------------------------------------------*/     
       void readImageInfo(InputStream *pIn,RGBImage *pRGB);
       void readImage(InputStream *pIn,RGBImage *pRGB);    
+      void decodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
       
     private:
       /*-----------------------------------------------------------------------
@@ -481,7 +477,6 @@ namespace ttjpg {
       -----------------------------------------------------------------------*/     
       void _InterpretMarker(InputStream *pIn,RGBImage *pRGB,Info *pi,int nMarker);
       void _DecodeFrame(InputStream *pIn,RGBImage *pRGB,Info *pi);
-      void _DecodeScan(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
       int _DecodeRestartInterval(InputStream *pIn,RGBImage *pRGB,Info *pi,Scan *ps);
       
       void _Parse(InputStream *pIn,RGBImage *pRGB,Info *pi,bool bGetInfoOnly);
@@ -493,15 +488,15 @@ namespace ttjpg {
       
       void _InverseDCT(short *pnBlock);
       
-      void _MergeMCU(RGBImage *pRGB,Info *pi);
-      
+      void _MergeMCU(RGBImage *pRGB,Info *pi);      
       void _UpdateMCU(Info *pi,int nDataUnit,short *pnBlock);
+      
       void _UpdateMCU8x8(uint8 *pcMCUBuffer,int nMCUXSize,int nMCUYSize,short *pnBlock,int nComponent,int nXOffset,int nYOffset);
       void _UpdateMCU16x8(uint8 *pcMCUBuffer,short *pnBlock,int nComponent);
       void _UpdateMCU16x16(uint8 *pcMCUBuffer,short *pnBlock,int nComponent);
       
       void _InitZZOrdering(void);
-      void _InitRGBTables(void);
+      void _InitRGBTables(void);            
   };
 
 }
